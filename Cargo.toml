@@ -1,0 +1,2 @@
+[workspace]
+members = ["network-policy-verdict-logger", "network-policy-verdict-logger-common", "xtask"]

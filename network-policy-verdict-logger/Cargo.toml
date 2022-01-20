@@ -1,0 +1,18 @@
+[package]
+name = "network-policy-verdict-logger"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+aya = { git = "https://github.com/aya-rs/aya", branch="main", features=["async_tokio"] }
+network-policy-verdict-logger-common = { path = "../network-policy-verdict-logger-common", features=["user"] }
+anyhow = "1.0.42"
+ctrlc = "3.2"
+bytes = "1.1.0"
+tokio = { version = "1.15.0", features = ["full"] }
+structopt = { version = "0.3"}
+
+[[bin]]
+name = "network-policy-verdict-logger"
+path = "src/main.rs"
