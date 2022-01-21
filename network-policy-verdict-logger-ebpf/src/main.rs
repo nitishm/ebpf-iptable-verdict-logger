@@ -9,12 +9,13 @@ use aya_bpf::{
     maps::PerfEventArray,
     programs::ProbeContext,
     cty::c_int,
+    cty::c_uchar,
     helpers::bpf_probe_read,
 };
 
 use aya_log_ebpf::info;
 
-use bindings::sk_buff;
+use bindings::{sk_buff, iphdr};
 
 use network_policy_verdict_logger_common::{IPTableVerdict, IPTableFlow};
 
@@ -35,16 +36,27 @@ pub fn network_policy_verdict_logger_probe(ctx: ProbeContext) -> u32 {
 unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u32, u32> {
     let tp: *const sk_buff = ctx.arg(0).ok_or(1u32)?;
     let protocol = bpf_probe_read(&(*tp).protocol as *const u16).map_err(|_| 100u32)?;
-    
-    if protocol == 8 {
+
+    if protocol != 8 {
         return Ok(0);
     }
 
+    // Verifier doesnt like this!!
+    let head = bpf_probe_read(&(*tp).head as *const *mut c_uchar).map_err(|_| 100u8)?;
+   
+    let network_header_offset = bpf_probe_read(&(*tp).network_header as *const u16).map_err(|_| 100u16)?; 
+   
+    let nw_hdr_ptr = (*tp).head.add(network_header_offset.into());
+    let nw_hdr = (*nw_hdr_ptr) as *const iphdr;
+   
     let flow = IPTableFlow {
-        proto: protocol,
+        proto: (*nw_hdr).protocol,
     };
-
+   
     TUPLES.output(&ctx, &flow, 0);
+
+    
+    
     
     Ok(0)
 }
