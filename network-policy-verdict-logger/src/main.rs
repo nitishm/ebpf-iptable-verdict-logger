@@ -46,11 +46,13 @@ async fn try_main() -> Result<(), anyhow::Error> {
     let mut bpf = Bpf::load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/network-policy-verdict-logger"
     ))?;
-    let program: &mut KProbe = bpf.program_mut("network_policy_verdict_logger_probe").unwrap().try_into()?;
+    // let program: &mut KProbe = bpf.program_mut("network_policy_verdict_logger_probe").unwrap().try_into()?;
+    let program: &mut KProbe = bpf.program_mut("network_policy_verdict_logger").unwrap().try_into()?;
     program.load()?;
     program.attach("nf_hook_slow", 0)?;
 
-    let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("TUPLES")?)?;
+    // let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("TUPLES")?)?;
+    let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
     
     for cpu_id in online_cpus()? {
         let mut buf = perf_array.open(cpu_id, None)?;
@@ -64,10 +66,12 @@ async fn try_main() -> Result<(), anyhow::Error> {
                 let events = buf.read_events(&mut buffers).await.unwrap();
                 for i in 0..events.read {
                     let buf = &mut buffers[i];
-                    let ptr = buf.as_ptr() as *const IPTableFlow;
+                    // let ptr = buf.as_ptr() as *const IPTableFlow;
+                    let ptr = buf.as_ptr() as *const IPTableVerdict;
                     let data = unsafe { ptr.read_unaligned() };
-                    let remote_addr = net::Ipv4Addr::from(data.remote_ip);
-                    println!("LOG: CPU {} EVENT {} REMOTE_IP {} LEN {}", cpu_id, i, remote_addr, data.len );
+                    // let remote_addr = net::Ipv4Addr::from(data.remote_ip);
+                    // println!("LOG: CPU {} EVENT {} REMOTE_IP {} LEN {}", cpu_id, i, remote_addr, data.len );
+                    println!("LOG: CPU {} EVENT {} Verdict {:?}", cpu_id, i, data);
                 }
             }
         });

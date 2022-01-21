@@ -56,9 +56,14 @@ pub fn network_policy_verdict_logger(ctx: ProbeContext) -> u32 {
 
 unsafe fn try_network_policy_verdict_logger(ctx: ProbeContext) -> Result<u32, u32> {
     let retval: c_int = ctx.ret().ok_or(100u32)?;
+    if retval == 1 {
+        return Ok(0);
+    }
+
     let verdict = IPTableVerdict {
-        verdict: retval as u32,
+        verdict: retval as i32,
     };
+    
     EVENTS.output(&ctx, &verdict, 0);
     
     Ok(0)

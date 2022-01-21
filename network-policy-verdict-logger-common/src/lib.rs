@@ -3,7 +3,7 @@
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct IPTableVerdict {
-    pub verdict: u32,
+    pub verdict: i32,
 }
 
 pub struct IPTableFlow {
