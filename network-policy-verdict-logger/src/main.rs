@@ -53,7 +53,7 @@ async fn try_main() -> Result<(), anyhow::Error> {
     let program_kretprobe: &mut KProbe = bpf.program_mut("network_policy_verdict_logger").unwrap().try_into()?;
     program_kretprobe.load()?;
     program_kretprobe.attach("nf_hook_slow", 0)?;
-    
+
     let mut perf_array_tuples = AsyncPerfEventArray::try_from(bpf.map_mut("TUPLES")?)?;
     let mut perf_array_events = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
     

@@ -34,10 +34,17 @@ pub fn network_policy_verdict_logger_probe(ctx: ProbeContext) -> u32 {
 
 unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u32, u32> {
     let tp: *const sk_buff = ctx.arg(0).ok_or(1u32)?;
-    // let flow = IPTableFlow {
-    // };
+    let protocol = bpf_probe_read(&(*tp).protocol as *const u16).map_err(|_| 100u32)?;
+    
+    if protocol == 8 {
+        return Ok(0);
+    }
 
-    // TUPLES.output(&ctx, &flow, 0);
+    let flow = IPTableFlow {
+        proto: protocol,
+    };
+
+    TUPLES.output(&ctx, &flow, 0);
     
     Ok(0)
 }

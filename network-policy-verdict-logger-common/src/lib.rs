@@ -13,5 +13,5 @@ pub struct IPTableFlow {
     // pub dst_ip4: u32,
     // pub src_port: u16,
     // pub dst_port: u16,
-    // pub proto: u16,
+    pub proto: u16,
 }
