@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+mod bindings;
 
 use aya_bpf::{
     macros::kprobe,
@@ -8,11 +9,12 @@ use aya_bpf::{
     maps::PerfEventArray,
     programs::ProbeContext,
     cty::c_int,
-    bindings::__sk_buff,
     helpers::bpf_probe_read,
 };
 
 use aya_log_ebpf::info;
+
+use bindings::sk_buff;
 
 use network_policy_verdict_logger_common::{IPTableVerdict, IPTableFlow};
 
@@ -31,17 +33,11 @@ pub fn network_policy_verdict_logger_probe(ctx: ProbeContext) -> u32 {
 }
 
 unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u32, u32> {
-    let tp: *const __sk_buff = ctx.arg(0).ok_or(1u32)?;
-    
-    let remote_ip = bpf_probe_read(&(*tp).remote_ip4 as *const u32).map_err(|_| 1u32)?;
-    let len = bpf_probe_read(&(*tp).len as *const u32).map_err(|_| 1u32)?;
-    
-    let flow = IPTableFlow {
-        remote_ip: remote_ip,
-        len: len,
-    };
+    let tp: *const sk_buff = ctx.arg(0).ok_or(1u32)?;
+    // let flow = IPTableFlow {
+    // };
 
-    TUPLES.output(&ctx, &flow, 0);
+    // TUPLES.output(&ctx, &flow, 0);
     
     Ok(0)
 }
