@@ -8,10 +8,11 @@ pub struct IPTableVerdict {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct IPTableFlow {
-    // pub src_ip4: u32,
-    // pub dst_ip4: u32,
-    // pub src_port: u16,
-    // pub dst_port: u16,
+pub struct IPTableV4Flow {
+    pub eth_proto: u16,
+    pub saddr: u32,
+    pub daddr: u32,
+    pub sport: u16,
+    pub dport: u16,
     pub proto: u8,
 }

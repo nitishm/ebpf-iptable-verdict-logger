@@ -18,7 +18,7 @@ use std::{
 use structopt::StructOpt;
 use tokio::{task,signal};
 
-use network_policy_verdict_logger_common::{IPTableVerdict, IPTableFlow};
+use network_policy_verdict_logger_common::{IPTableVerdict, IPTableV4Flow};
 
 #[tokio::main]
 async fn main() {
@@ -69,10 +69,15 @@ async fn try_main() -> Result<(), anyhow::Error> {
                 let events = buf_tuples.read_events(&mut buffers).await.unwrap();
                 for i in 0..events.read {
                     let buf = &mut buffers[i];
-                    let ptr = buf.as_ptr() as *const IPTableFlow;
+                    let ptr = buf.as_ptr() as *const IPTableV4Flow;
                     let data = unsafe { ptr.read_unaligned() };
-                    // let remote_addr = net::Ipv4Addr::from(data.remote_ip);
-                    println!("LOG: CPU {} EVENT {} FLOW {:?}", cpu_id, i, data);
+                    let saddr = net::Ipv4Addr::from(data.saddr.to_be());
+                    let daddr = net::Ipv4Addr::from(data.daddr.to_be());
+                    if data.proto == 17 {
+                        println!("Network Proto {} Transport Proto {} SourceIP {} DestIP {} SourcePort {} DestPort {}", 
+                            data.eth_proto, data.proto, saddr, daddr, data.sport, data.dport
+                        );
+                    }
                 }
             }
         });
