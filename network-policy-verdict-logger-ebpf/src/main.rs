@@ -3,22 +3,24 @@
 mod bindings;
 
 use aya_bpf::{
-    cty::c_int, cty::c_uchar, helpers::bpf_probe_read, macros::kprobe, macros::kretprobe,
-    macros::map, maps::PerfEventArray, programs::ProbeContext,
+    cty::c_int, cty::c_uchar, 
+    helpers::{bpf_probe_read,bpf_get_current_pid_tgid},
+    macros::{map, kprobe, kretprobe}, 
+    maps::{HashMap, PerfEventArray}, 
+    programs::ProbeContext,
 };
 
 use aya_log_ebpf::info;
 
 use bindings::{
-    iphdr, sk_buff,
-    tcphdr, udphdr,
+    sk_buff,
+    iphdr, tcphdr, udphdr,
 };
 
-use network_policy_verdict_logger_common::{IPTableV4Flow, IPTableVerdict};
+use network_policy_verdict_logger_common::IPTableV4Flow;
 
-#[map(name = "EVENTS")]
-static mut EVENTS: PerfEventArray<IPTableVerdict> =
-    PerfEventArray::<IPTableVerdict>::with_max_entries(1024, 0);
+#[map]
+static mut FLOWS: HashMap<(u32, u32), IPTableV4Flow> = HashMap::with_max_entries(32768, 0);
 
 #[map(name = "TUPLES")]
 static mut TUPLES: PerfEventArray<IPTableV4Flow> =
@@ -33,6 +35,9 @@ pub fn network_policy_verdict_logger_probe(ctx: ProbeContext) -> u32 {
 }
 
 unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u32, u32> {
+    let tid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let pid = bpf_get_current_pid_tgid() as u32;
+
     let tp: *const sk_buff = ctx.arg(0).ok_or(1u32)?;
     let eth_proto = bpf_probe_read(&(*tp).protocol as *const u16).map_err(|_| 100u32)?;
 
@@ -72,7 +77,7 @@ unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u
         },
         UDP_PROTOCOL_NUMBER => {
             let transport_header_offset =
-            bpf_probe_read(&(*tp).transport_header as *const u16).map_err(|_| 100u16)?;
+                bpf_probe_read(&(*tp).transport_header as *const u16).map_err(|_| 100u16)?;
 
             let trans_hdr_ptr = head.add(transport_header_offset as usize);
             let trans_hdr = bpf_probe_read(trans_hdr_ptr as *const udphdr).map_err(|_| 101u8)?;
@@ -89,9 +94,10 @@ unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u
         daddr: daddr,
         sport: sport,
         dport: dport,
+        verdict: 0 as i32,
     };
 
-    TUPLES.output(&ctx, &flow, 0);
+    FLOWS.insert(&(tid, pid), &flow, 0).map_err(|e| e as u32)?;
 
     Ok(0)
 }
@@ -105,16 +111,22 @@ pub fn network_policy_verdict_logger(ctx: ProbeContext) -> u32 {
 }
 
 unsafe fn try_network_policy_verdict_logger(ctx: ProbeContext) -> Result<u32, u32> {
+    let tid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let pid = bpf_get_current_pid_tgid() as u32;
     let retval: c_int = ctx.ret().ok_or(100u32)?;
+
     if retval == 1 {
         return Ok(0);
     }
 
-    let verdict = IPTableVerdict {
-        verdict: retval as i32,
-    };
-
-    EVENTS.output(&ctx, &verdict, 0);
+    match FLOWS.get(&(tid, pid)) {
+        Some(flow) => {
+            let mut new_flow = *flow;
+            new_flow.verdict = retval as i32;
+            TUPLES.output(&ctx, &new_flow, 0);
+        },
+        None => (),
+    }
 
     Ok(0)
 }
@@ -125,6 +137,6 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 const IPV4_PROTOCOL_NUMBER: u16 = 8u16;
-const IPV6_PROTOCOL_NUMBER: u16 =  41u16;
-const TCP_PROTOCOL_NUMBER: u16 =  6u16;
+const IPV6_PROTOCOL_NUMBER: u16 = 41u16;
+const TCP_PROTOCOL_NUMBER: u16 = 6u16;
 const UDP_PROTOCOL_NUMBER: u16 = 17u16;
