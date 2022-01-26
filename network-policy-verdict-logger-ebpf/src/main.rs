@@ -19,11 +19,14 @@ use bindings::{
 
 use network_policy_verdict_logger_common::IPTableV4Flow;
 
-#[map]
-static mut FLOWS: HashMap<(u32, u32), IPTableV4Flow> = HashMap::with_max_entries(32768, 0);
+#[map(name = "FLOW_TABLE_V4")]
+static mut FLOW_TABLE_V4: HashMap<IPTableV4Flow, i32> = HashMap::with_max_entries(1024, 0);
 
-#[map(name = "TUPLES")]
-static mut TUPLES: PerfEventArray<IPTableV4Flow> =
+#[map(name = "FLOWS_V4_LUP")]
+static mut FLOWS_V4_LUP: HashMap<(u32, u32), IPTableV4Flow> = HashMap::with_max_entries(1024, 0);
+
+#[map(name = "EVENTS")]
+static mut EVENTS: PerfEventArray<IPTableV4Flow> =
     PerfEventArray::<IPTableV4Flow>::with_max_entries(1024, 0);
 
 #[kprobe(name = "network_policy_verdict_logger_probe")]
@@ -45,6 +48,11 @@ unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u
         return Ok(0);
     }
 
+    // For now let's only handle IPv4
+    if eth_proto == IPV6_PROTOCOL_NUMBER {
+        return Ok(0);
+    }
+    
     // Verifier doesnt like this!!
     let head = bpf_probe_read(&(*tp).head as *const *mut c_uchar).map_err(|_| 100u8)?;
     let network_header_offset =
@@ -88,16 +96,14 @@ unsafe fn try_network_policy_verdict_logger_probe(ctx: ProbeContext) -> Result<u
     };
 
     let flow = IPTableV4Flow {
-        eth_proto: eth_proto as u16, 
         proto: proto as u8,
         saddr: saddr,
         daddr: daddr,
         sport: sport,
         dport: dport,
-        verdict: 0 as i32,
     };
 
-    FLOWS.insert(&(tid, pid), &flow, 0).map_err(|e| e as u32)?;
+    FLOWS_V4_LUP.insert(&(tid, pid), &flow, 0).map_err(|e| e as u32)?;
 
     Ok(0)
 }
@@ -115,15 +121,11 @@ unsafe fn try_network_policy_verdict_logger(ctx: ProbeContext) -> Result<u32, u3
     let pid = bpf_get_current_pid_tgid() as u32;
     let retval: c_int = ctx.ret().ok_or(100u32)?;
 
-    if retval == 1 {
-        return Ok(0);
-    }
-
-    match FLOWS.get(&(tid, pid)) {
+    match FLOWS_V4_LUP.get(&(tid, pid)) {
         Some(flow) => {
             let mut new_flow = *flow;
-            new_flow.verdict = retval as i32;
-            TUPLES.output(&ctx, &new_flow, 0);
+            let verdict = retval as i32;
+            FLOW_TABLE_V4.insert(&new_flow, &verdict, 0).map_err(|e| e as u32)?;
         },
         None => (),
     }
